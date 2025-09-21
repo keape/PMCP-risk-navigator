@@ -1111,6 +1111,10 @@
       return !!(cfg.token && cfg.base && cfg.table);
     }
 
+    function hasAirtableAuth(cfg) {
+      return !!(cfg.token && cfg.base);
+    }
+
     function syncInputsFromConfig() {
       const cfg = loadAirtableConfig();
       if (airtableTokenInput) airtableTokenInput.value = cfg.token || '';
@@ -1430,7 +1434,14 @@
 
     async function pushPositionsToAirtable() {
       const cfg = readConfigFromInputs();
-      if (!isAirtableConfigured(cfg) || !cfg.longTable || !cfg.shortTable) {
+      cfg.longTable = cfg.longTable || DEFAULT_LONG_TABLE;
+      cfg.shortTable = cfg.shortTable || DEFAULT_SHORT_TABLE;
+      saveAirtableConfig(cfg);
+      if (!hasAirtableAuth(cfg)) {
+        setAirtableStatus('Config Airtable incompleta (token/base).', true);
+        return;
+      }
+      if (!cfg.longTable || !cfg.shortTable) {
         setAirtableStatus('Config Airtable incompleta (tabelle long/short).', true);
         return;
       }
@@ -1481,7 +1492,14 @@
 
     async function pullPositionsFromAirtable() {
       const cfg = readConfigFromInputs();
-      if (!isAirtableConfigured(cfg) || !cfg.longTable || !cfg.shortTable) {
+      cfg.longTable = cfg.longTable || DEFAULT_LONG_TABLE;
+      cfg.shortTable = cfg.shortTable || DEFAULT_SHORT_TABLE;
+      saveAirtableConfig(cfg);
+      if (!hasAirtableAuth(cfg)) {
+        setAirtableStatus('Config Airtable incompleta (token/base).', true);
+        return;
+      }
+      if (!cfg.longTable || !cfg.shortTable) {
         setAirtableStatus('Config Airtable incompleta (tabelle long/short).', true);
         return;
       }

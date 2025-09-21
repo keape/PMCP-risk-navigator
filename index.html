@@ -196,6 +196,32 @@
     }
 
     .status-line.error { color: #fca5a5; }
+
+    /* Chart styles */
+    .chart-wrap { position: relative; }
+    .chart-canvas { width: 100%; height: 320px; display: block; }
+    .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 0.9rem; color: #cbd5f5; }
+    .legend-item { display: inline-flex; align-items: center; gap: 8px; }
+    .legend-swatch { width: 14px; height: 3px; border-radius: 3px; background: #3b82f6; }
+    .legend-swatch.short { background: #ef4444; }
+    .legend-swatch.total { background: #34d399; height: 4px; }
+    .legend-swatch.realized { background: #a78bfa; }
+    .chart-controls { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+    .chart-controls input[type="number"], .chart-controls input[type="range"] { max-width: 160px; }
+    .chart-toggles { display: flex; gap: 12px; align-items: center; margin-top: 10px; flex-wrap: wrap; font-size: 0.9rem; }
+    .chart-toggles label { display: inline-flex; align-items: center; gap: 6px; }
+    .chart-tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+      box-shadow: 0 10px 22px rgba(0,0,0,0.35);
+      min-width: 140px;
+    }
   </style>
 </head>
 <body>
@@ -204,8 +230,8 @@
       <h1>PMCP – Portfolio Plateau (multi-long &amp; multi-short)</h1>
       <div class="meta" id="generatedMeta"></div>
       <p class="intro-note">
-        Fill the tables. Use 1 in "Active" if the option is open, 0 if closed. "Realized_P/L" holds closed P/L. Le
-        formule sottostanti replicano il Foglio4 del workbook originale.
+        Compila le tabelle. Inserisci 1 nella colonna "Active" quando l'opzione è aperta, 0 quando è chiusa. La colonna
+        "Realized_P/L" raccoglie i risultati già chiusi. Tutti i calcoli vengono eseguiti direttamente in questa pagina.
       </p>
     </header>
 
@@ -260,30 +286,108 @@
       <div class="summary-grid">
         <div class="summary-card">
           <span class="label">Long (active) — S=0 payoff net</span>
-          <span id="summaryLong" class="value">€0</span>
+          <span id="summaryLong" class="value">$0</span>
         </div>
         <div class="summary-card">
           <span class="label">Short (active) — S=0 payoff net</span>
-          <span id="summaryShort" class="value">€0</span>
+          <span id="summaryShort" class="value">$0</span>
         </div>
         <div class="summary-card">
           <span class="label">Realized cashflow (closed)</span>
-          <span id="summaryRealized" class="value">€0</span>
+          <span id="summaryRealized" class="value">$0</span>
         </div>
         <div class="summary-card">
           <span class="label">Portfolio Plateau_min (worst-case)</span>
-          <span id="summaryPlateau" class="value">€0</span>
+          <span id="summaryPlateau" class="value">$0</span>
+        </div>
+        <div class="summary-card">
+          <span class="label">Portfolio Plateau_max (bullish)</span>
+          <span id="summaryPlateauBullish" class="value">$0</span>
         </div>
       </div>
       <div class="meaning">
         <p><strong>Meaning:</strong></p>
-        <p>O5 = Value of active long puts at S=0 minus their cost.</p>
-        <p>O6 = Premiums of active shorts minus obligation (strike*100).</p>
-        <p>O7 = Sum of all closed/realized P/L (longs + shorts).</p>
-        <p>O8 = Portfolio plateau_min (max loss/profit if S=0 now).</p>
+        <p>Il payoff netto delle put long attive nello scenario estremo S=0 corrisponde all'incasso teorico meno il premio pagato.</p>
+        <p>La metrica delle short put attive mostra quanto resterebbe se fossero esercitate oggi: premi incassati meno esborso per lo strike (strike × 100).</p>
+        <p>I risultati già chiusi rappresentano la somma dei profitti e delle perdite realizzate su posizioni long e short.</p>
+        <p>Il plateau minimo del portafoglio sintetizza la perdita massima (o il guadagno minimo) ipotizzando che oggi l'underlying valga S=0.</p>
+        <p>Il plateau massimo (bullish) descrive lo scenario opposto: se S è molto superiore a tutti gli strike (S ≫ K), le long put scadono senza valore (perdita pari ai premi pagati) e le short put trattengono i premi incassati. Quindi plateau_max ≈ realized + Σ(premi short attive) − Σ(premi long attive).</p>
       </div>
     </section>
 
+    <section>
+      <h2>Grafico plateau</h2>
+      <div class="chart-wrap">
+        <canvas id="plateauCanvas" class="chart-canvas"></canvas>
+        <div id="chartTooltip" class="chart-tooltip" style="display:none;"></div>
+      </div>
+      <div class="chart-controls">
+        <label>
+          <span>Min S</span>
+          <input id="chartMinS" type="number" step="1" min="0" value="0" />
+        </label>
+        <label>
+          <span>Max S</span>
+          <input id="chartMaxS" type="number" step="1" min="10" value="1000" />
+        </label>
+        <label style="flex:1;min-width:220px;">
+          <span>Cursor S</span>
+          <input id="chartCursorS" type="range" min="0" max="1000" step="1" value="0" style="width:100%;" />
+        </label>
+        <button id="chartAutoRange" class="secondary" type="button">Auto range</button>
+      </div>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-swatch"></span>Long attivi (orizzontali blu, asse K)</span>
+        <span class="legend-item"><span class="legend-swatch short"></span>Short attivi (orizzontali rosse, asse K)</span>
+        <span class="legend-item"><span class="legend-swatch realized"></span>Area realized (asse P/L)</span>
+        <span class="legend-item"><span class="legend-swatch total"></span>Totale plateau (asse P/L)</span>
+      </div>
+      <div class="chart-toggles">
+        <label><input type="checkbox" id="showLong" checked /> Long</label>
+        <label><input type="checkbox" id="showShort" checked /> Short</label>
+        <label><input type="checkbox" id="showArea" checked /> Area realized</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Transazioni ↔ Airtable</h2>
+      <div class="file-tools">
+        <label>
+          <span>Tabella LONG (nome o ID)</span>
+          <input id="airtableLongTable" type="text" placeholder="LongPositions o tbl..." />
+        </label>
+        <label>
+          <span>Tabella SHORT (nome o ID)</span>
+          <input id="airtableShortTable" type="text" placeholder="ShortPositions o tbl..." />
+        </label>
+        <label>
+          <span>View LONG (opzionale)</span>
+          <input id="airtableLongView" type="text" placeholder="viw... o nome view Long" />
+        </label>
+        <label>
+          <span>View SHORT (opzionale)</span>
+          <input id="airtableShortView" type="text" placeholder="viw... o nome view Short" />
+        </label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+          <label><span>Campo strike</span><input id="airtableStrikeField" type="text" placeholder="strike" /></label>
+          <label><span>Campo premium</span><input id="airtablePremiumField" type="text" placeholder="premium" /></label>
+          <label><span>Campo contracts</span><input id="airtableContractsField" type="text" placeholder="contracts" /></label>
+          <label><span>Campo active</span><input id="airtableActiveField" type="text" placeholder="active" /></label>
+          <label><span>Campo realized P/L</span><input id="airtableRealizedField" type="text" placeholder="realizedPL" /></label>
+        </div>
+        <div>
+          <button id="airtablePushAll">Sincronizza su Airtable (tutte le posizioni)</button>
+          <button id="airtablePullAll" class="secondary">Carica da Airtable (tutte le posizioni)</button>
+          <button id="airtableTest" class="secondary">Test connessione</button>
+        </div>
+        <div class="status-line" id="airtableStatus"></div>
+        <p style="margin:0;color:#94a3b8;font-size:0.9rem;">
+          Suggerito: crea due tabelle (LongPositions, ShortPositions) con campi: strike (Number), premium (Number), contracts (Number), active (Checkbox), realizedPL (Number).
+        </p>
+      </div>
+    </section>
+
+    <!-- Esporta/Importa spostato in fondo -->
     <section>
       <h2>Esporta / importa dati</h2>
       <div class="file-tools">
@@ -307,8 +411,28 @@
     const summaryShort = document.getElementById('summaryShort');
     const summaryRealized = document.getElementById('summaryRealized');
     const summaryPlateau = document.getElementById('summaryPlateau');
+    const summaryPlateauBullish = document.getElementById('summaryPlateauBullish');
     const statusLine = document.getElementById('statusLine');
+    const airtableStatusLine = document.getElementById('airtableStatus');
     const generatedMeta = document.getElementById('generatedMeta');
+    const plateauCanvas = document.getElementById('plateauCanvas');
+    const chartTooltip = document.getElementById('chartTooltip');
+    const chartMinS = document.getElementById('chartMinS');
+    const chartMaxS = document.getElementById('chartMaxS');
+    const chartCursorS = document.getElementById('chartCursorS');
+    const chartAutoRangeBtn = document.getElementById('chartAutoRange');
+    const chkShowLong = document.getElementById('showLong');
+    const chkShowShort = document.getElementById('showShort');
+    const chkShowArea = document.getElementById('showArea');
+
+    const CHART_TOGGLES_KEY = 'chartToggles.v2';
+    function loadChartToggles(){
+      try { return JSON.parse(localStorage.getItem(CHART_TOGGLES_KEY)) || { long:true, short:true, area:true }; }
+      catch { return { long:true, short:true, area:true }; }
+    }
+    function saveChartToggles(cfg){ localStorage.setItem(CHART_TOGGLES_KEY, JSON.stringify(cfg)); }
+    function syncToggleInputs(){ const c = loadChartToggles(); chkShowLong.checked=c.long; chkShowShort.checked=c.short; chkShowArea.checked=c.area; }
+    function togglesNow(){ const c = { long:chkShowLong.checked, short:chkShowShort.checked, area:chkShowArea.checked }; saveChartToggles(c); return c; }
 
     const CONTRACT_MULTIPLIER = 100;
 
@@ -324,9 +448,9 @@
 
     function euro(amount) {
       const value = Number(amount) || 0;
-      return value.toLocaleString('it-IT', {
+      return value.toLocaleString('en-US', {
         style: 'currency',
-        currency: 'EUR',
+        currency: 'USD',
         maximumFractionDigits: 0
       });
     }
@@ -376,7 +500,19 @@
 
     function renderTable(body, rows, type) {
       body.innerHTML = '';
-      rows.forEach((row, index) => {
+      let entries = rows.map((row, i) => ({ row, originalIndex: i }));
+      if (type === 'short') {
+        entries.sort((a, b) => {
+          const aActive = ensureActive(a.row.active) === 1 ? 1 : 0;
+          const bActive = ensureActive(b.row.active) === 1 ? 1 : 0;
+          if (bActive !== aActive) return bActive - aActive; // active first
+          const ao = Number.isFinite(a.row._airtableOrder) ? a.row._airtableOrder : Number.POSITIVE_INFINITY;
+          const bo = Number.isFinite(b.row._airtableOrder) ? b.row._airtableOrder : Number.POSITIVE_INFINITY;
+          if (ao !== bo) return ao - bo; // airtable order
+          return a.originalIndex - b.originalIndex; // stable fallback
+        });
+      }
+      entries.forEach(({ row, originalIndex }) => {
         const tr = document.createElement('tr');
         if (ensureActive(row.active) === 0) tr.classList.add('closed');
 
@@ -421,7 +557,7 @@
         removeBtn.className = 'danger';
         removeBtn.textContent = 'Elimina';
         removeBtn.addEventListener('click', () => {
-          rows.splice(index, 1);
+          rows.splice(originalIndex, 1);
           renderTables();
           updateSummary();
         });
@@ -460,6 +596,26 @@
       }, 0);
     }
 
+    function sumBullishLongComponent() {
+      // Long puts at S >> K: intrinsic = 0, net = -premium * qty
+      return state.longRows.reduce((sum, row) => {
+        if (ensureActive(row.active) === 1 && row.premium != null && row.qty != null) {
+          return sum + (-row.premium * row.qty);
+        }
+        return sum;
+      }, 0);
+    }
+
+    function sumBullishShortComponent() {
+      // Short puts at S >> K: intrinsic = 0, net = +premium * qty
+      return state.shortRows.reduce((sum, row) => {
+        if (ensureActive(row.active) === 1 && row.premium != null && row.qty != null) {
+          return sum + (row.premium * row.qty);
+        }
+        return sum;
+      }, 0);
+    }
+
     function sumRealized() {
       const realizedLong = state.longRows.reduce((sum, row) => {
         if (ensureActive(row.active) === 0 && row.realized != null) {
@@ -483,11 +639,14 @@
       const shortActive = sumActiveShort();
       const realized = sumRealized();
       const plateau = longActive + shortActive + realized;
+      const plateauBullish = sumBullishLongComponent() + sumBullishShortComponent() + realized;
 
       setSummaryValue(summaryLong, longActive);
       setSummaryValue(summaryShort, shortActive);
       setSummaryValue(summaryRealized, realized);
       setSummaryValue(summaryPlateau, plateau);
+      setSummaryValue(summaryPlateauBullish, plateauBullish);
+      redrawChart();
     }
 
     document.getElementById('addLongRow').addEventListener('click', () => {
@@ -548,16 +707,29 @@
       };
     }
 
-    function setStatus(message, error = false) {
-      statusLine.textContent = message;
-      statusLine.classList.toggle('error', !!error);
+    function updateStatusElement(el, message, error = false) {
+      if (!el) return;
+      el.textContent = message;
+      el.classList.toggle('error', !!error);
       if (message) {
         setTimeout(() => {
-          if (statusLine.textContent === message) {
-            statusLine.textContent = '';
-            statusLine.classList.remove('error');
+          if (el.textContent === message) {
+            el.textContent = '';
+            el.classList.remove('error');
           }
         }, 5000);
+      }
+    }
+
+    function setStatus(message, error = false) {
+      updateStatusElement(statusLine, message, error);
+    }
+
+    function setAirtableStatus(message, error = false) {
+      if (airtableStatusLine) {
+        updateStatusElement(airtableStatusLine, message, error);
+      } else {
+        updateStatusElement(statusLine, message, error);
       }
     }
 
@@ -635,6 +807,248 @@
       }
     }
 
+    // ---- Plateau chart ----
+    function payoffLongAtS(S) {
+      return state.longRows.reduce((sum, row) => {
+        if (ensureActive(row.active) === 1 && row.strike != null && row.premium != null && row.qty != null) {
+          const intrinsic = Math.max((row.strike - S), 0) * CONTRACT_MULTIPLIER;
+          return sum + (intrinsic - row.premium) * row.qty;
+        }
+        return sum;
+      }, 0);
+    }
+
+    function payoffShortAtS(S) {
+      return state.shortRows.reduce((sum, row) => {
+        if (ensureActive(row.active) === 1 && row.strike != null && row.premium != null && row.qty != null) {
+          const intrinsic = Math.max((row.strike - S), 0) * CONTRACT_MULTIPLIER;
+          return sum + (row.premium - intrinsic) * row.qty;
+        }
+        return sum;
+      }, 0);
+    }
+
+    function realizedConstant() { return sumRealized(); }
+
+    function autoRange() {
+      const strikes = [
+        ...state.longRows.map(r => r.strike).filter(v => Number.isFinite(v)),
+        ...state.shortRows.map(r => r.strike).filter(v => Number.isFinite(v))
+      ];
+      const maxK = strikes.length ? Math.max(...strikes) : 1000;
+      const minS = 0;
+      const maxS = Math.max(50, Math.ceil(maxK * 1.2));
+      chartMinS.value = String(minS);
+      chartMaxS.value = String(maxS);
+      chartCursorS.min = String(minS);
+      chartCursorS.max = String(maxS);
+      chartCursorS.value = String(Math.min(Number(chartCursorS.value)||0, maxS));
+    }
+
+    function redrawChart() {
+      if (!plateauCanvas) return;
+      const dpr = window.devicePixelRatio || 1;
+      const rect = plateauCanvas.getBoundingClientRect();
+      const width = Math.max(300, Math.floor(rect.width));
+      const height = Math.max(200, Math.floor(rect.height));
+      plateauCanvas.width = Math.floor(width * dpr);
+      plateauCanvas.height = Math.floor(height * dpr);
+      const ctx = plateauCanvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, width, height);
+
+      // Rethought chart: x = S, y = K (strike)
+      const minS = Math.max(0, Number(chartMinS.value) || 0);
+      const maxS = Math.max(minS + 1, Number(chartMaxS.value) || 1000);
+      const strikes = [
+        ...state.longRows.map(r => r.strike).filter(v => Number.isFinite(v)),
+        ...state.shortRows.map(r => r.strike).filter(v => Number.isFinite(v))
+      ];
+      const minKraw = strikes.length ? Math.min(...strikes) : 0;
+      const maxKraw = strikes.length ? Math.max(...strikes) : 1000;
+      const kPad = Math.max(10, (maxKraw - minKraw) * 0.08);
+      const minK = Math.max(0, Math.floor(minKraw - kPad));
+      const maxK = Math.ceil(maxKraw + kPad);
+
+      const padL = 56, padR = 16, padT = 16, padB = 34;
+      const plotW = width - padL - padR;
+      const plotH = height - padT - padB;
+      const xOf = S => padL + (S - minS) / (maxS - minS) * plotW;
+      const yOf = K => padT + (1 - (K - minK) / (maxK - minK)) * plotH;
+
+      // Axes frame
+      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.rect(padL, padT, plotW, plotH); ctx.stroke();
+      // Labels
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.fillText('S (prezzo sottostante)', padL, height - 8);
+      ctx.save(); ctx.translate(12, padT + 12); ctx.rotate(-Math.PI/2); ctx.fillText('K (strike)', 0, 0); ctx.restore();
+      // Grid
+      ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+      for (let i = 1; i < 5; i++) {
+        const t = i / 5;
+        const y = padT + (1 - t) * plotH; ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(width - padR, y); ctx.stroke();
+        const x = padL + t * plotW; ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, height - padB); ctx.stroke();
+      }
+
+      // Left axis ticks and labels (Strike K)
+      ctx.fillStyle = '#cbd5f5';
+      ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+      ctx.font = '11px system-ui, -apple-system, Segoe UI, sans-serif';
+      const kTicks = 5;
+      for (let i = 0; i <= kTicks; i++) {
+        const t = i / kTicks;
+        const Kval = minK + (maxK - minK) * (1 - t);
+        const y = yOf(Kval);
+        // tick mark
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL - 6, y); ctx.stroke();
+        // label
+        const lab = Number(Kval).toLocaleString('it-IT', { maximumFractionDigits: 0 });
+        ctx.fillText(lab, padL - 6 - 48, y + 4);
+      }
+
+      const show = togglesNow();
+      // Longs: horizontal blue lines at y = K
+      if (show.long) {
+        ctx.save(); ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
+        state.longRows.forEach(row => {
+          if (ensureActive(row.active) !== 1 || !Number.isFinite(row.strike)) return;
+          const y = yOf(row.strike);
+          ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(width - padR, y); ctx.stroke();
+        });
+        ctx.restore();
+      }
+
+      // Shorts: horizontal red lines at y = K
+      if (show.short) {
+        ctx.save(); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+        state.shortRows.forEach(row => {
+          if (ensureActive(row.active) !== 1 || !Number.isFinite(row.strike)) return;
+          const y = yOf(row.strike);
+          ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(width - padR, y); ctx.stroke();
+        });
+        ctx.restore();
+      }
+
+      // Secondary right axis: P/L lines (realized + total plateau)
+      const steps = 240;
+      let minPL = Infinity, maxPL = -Infinity;
+      for (let i = 0; i <= steps; i++) {
+        const S = minS + (maxS - minS) * (i/steps);
+        const pl = payoffLongAtS(S) + payoffShortAtS(S) + realizedConstant();
+        if (pl < minPL) minPL = pl; if (pl > maxPL) maxPL = pl;
+      }
+      const padPL = Math.max(100, (maxPL - minPL) * 0.08);
+      minPL -= padPL; maxPL += padPL;
+      const yOfPL = v => padT + (1 - (v - minPL) / (maxPL - minPL)) * plotH;
+
+      // Fill area representing the realized cashflow contribution
+      if (show.area) {
+        const realizedVal = realizedConstant();
+        ctx.save();
+        ctx.fillStyle = 'rgba(167,139,250,0.18)'; // purple translucent
+        ctx.beginPath();
+        // top edge = total without realized (long+short)
+        for (let i = 0; i <= steps; i++) {
+          const S = minS + (maxS - minS) * (i/steps);
+          const plNoReal = payoffLongAtS(S) + payoffShortAtS(S);
+          const x = xOf(S);
+          const yTop = yOfPL(plNoReal);
+          if (i === 0) ctx.moveTo(x, yTop); else ctx.lineTo(x, yTop);
+        }
+        // bottom edge = total with realized (shifted by realizedVal)
+        for (let i = steps; i >= 0; i--) {
+          const S = minS + (maxS - minS) * (i/steps);
+          const plWithReal = payoffLongAtS(S) + payoffShortAtS(S) + realizedVal;
+          const x = xOf(S);
+          const yBot = yOfPL(plWithReal);
+          ctx.lineTo(x, yBot);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Plateau total line (green)
+      ctx.save(); ctx.strokeStyle = '#34d399'; ctx.lineWidth = 3; ctx.beginPath();
+      for (let i = 0; i <= steps; i++) {
+        const S = minS + (maxS - minS) * (i/steps);
+        const y = yOfPL(payoffLongAtS(S) + payoffShortAtS(S) + realizedConstant());
+        const x = xOf(S);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke(); ctx.restore();
+
+      // Right axis ticks for P/L (always shown when plateau line is visible)
+      ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = 'rgba(148,163,184,0.25)'; ctx.font = '11px system-ui, -apple-system, Segoe UI, sans-serif';
+      const tickN = 4;
+      for (let i = 0; i <= tickN; i++) {
+        const t = i / tickN; const val = minPL + (maxPL - minPL) * (1 - t);
+        const y = yOfPL(val);
+        ctx.beginPath(); ctx.moveTo(width - padR - 6, y); ctx.lineTo(width - padR, y); ctx.stroke();
+        ctx.fillText(euro(val), width - padR - 76, y + 4);
+      }
+
+      // Cursor/tooltip
+      const cursorS = Math.min(Math.max(Number(chartCursorS.value) || minS, minS), maxS);
+      const xC = xOf(cursorS);
+      ctx.strokeStyle = 'rgba(148,163,184,0.4)';
+      ctx.beginPath();
+      ctx.moveTo(xC, padT); ctx.lineTo(xC, height - padB); ctx.stroke();
+
+      // Build tooltip content at current S
+      const yLong = payoffLongAtS(cursorS);
+      const yShort = payoffShortAtS(cursorS);
+      const yReal = realizedConstant();
+      const yTot = yLong + yShort + yReal;
+      const longsActive = state.longRows.filter(r => ensureActive(r.active)===1).length;
+      const shortsActive = state.shortRows.filter(r => ensureActive(r.active)===1).length;
+      const tt = chartTooltip;
+      tt.innerHTML = `
+        <div><strong>S: </strong>${cursorS.toFixed(0)}</div>
+        <div><span style="color:#3b82f6;">Long attive:</span> ${longsActive}</div>
+        <div><span style="color:#ef4444;">Short attive:</span> ${shortsActive}</div>
+        <div><span style="color:#a78bfa;">Somma realized:</span> ${euro(yReal)}</div>
+        <div style="margin-top:4px;color:#34d399;"><strong>Plateau: ${euro(yTot)}</strong></div>
+      `;
+      // position tooltip near cursor within bounds
+      const ttRect = { w: 170, h: 80 };
+      let ttX = xC + 12; let ttY = padT + 12;
+      if (ttX + ttRect.w > width - 8) ttX = xC - ttRect.w - 12;
+      tt.style.left = `${ttX}px`;
+      tt.style.top = `${ttY}px`;
+      tt.style.display = 'block';
+
+      // store for mouse move mapping
+      plateauCanvas._chartMap = { xOf, yOf, minS, maxS, padT, padB, padL, padR };
+    }
+
+    function onCanvasMouseMove(evt) {
+      const map = plateauCanvas._chartMap;
+      if (!map) return;
+      const rect = plateauCanvas.getBoundingClientRect();
+      const x = evt.clientX - rect.left;
+      const { minS, maxS, padL, padR } = map;
+      const plotW = rect.width - padL - padR;
+      const clamped = Math.max(padL, Math.min(rect.width - padR, x));
+      const t = (clamped - padL) / plotW;
+      const S = Math.round(minS + t * (maxS - minS));
+      chartCursorS.value = String(S);
+      redrawChart();
+    }
+
+    function onResize() { redrawChart(); }
+
+    plateauCanvas.addEventListener('mousemove', onCanvasMouseMove);
+    plateauCanvas.addEventListener('mouseleave', () => { chartTooltip.style.display = 'none'; });
+    chartMinS.addEventListener('change', redrawChart);
+    chartMaxS.addEventListener('change', redrawChart);
+    chartCursorS.addEventListener('input', redrawChart);
+    chartAutoRangeBtn.addEventListener('click', () => { autoRange(); redrawChart(); });
+    [chkShowLong, chkShowShort, chkShowArea].forEach(el => el.addEventListener('change', () => { togglesNow(); redrawChart(); }));
+
     async function preloadJson() {
       try {
         const response = await fetch('leap-risk-navigation.json');
@@ -649,7 +1063,455 @@
 
     renderTables();
     updateSummary();
+    autoRange();
+    syncToggleInputs();
     preloadJson();
+
+    // --- Airtable integration (snapshot-based) ---
+    const AIRTABLE_CFG_KEY = 'airtableConfig.v2';
+    const airtableTokenInput = document.getElementById('airtableToken');
+    const airtableBaseInput = document.getElementById('airtableBase');
+    const airtableTableInput = document.getElementById('airtableTable');
+    const airtableViewInput = document.getElementById('airtableView');
+    const airtablePayloadFieldInput = document.getElementById('airtablePayloadField');
+    const airtableDateFieldInput = document.getElementById('airtableDateField');
+    const airtablePlateauFieldInput = document.getElementById('airtablePlateauField');
+    const airtableUrlInput = document.getElementById('airtableUrl');
+    const airtableLongTableInput = document.getElementById('airtableLongTable');
+    const airtableShortTableInput = document.getElementById('airtableShortTable');
+    const airtableLongViewInput = document.getElementById('airtableLongView');
+    const airtableShortViewInput = document.getElementById('airtableShortView');
+    const airtableStrikeFieldInput = document.getElementById('airtableStrikeField');
+    const airtablePremiumFieldInput = document.getElementById('airtablePremiumField');
+    const airtableContractsFieldInput = document.getElementById('airtableContractsField');
+    const airtableActiveFieldInput = document.getElementById('airtableActiveField');
+    const airtableRealizedFieldInput = document.getElementById('airtableRealizedField');
+
+    function loadAirtableConfig() {
+      try {
+        const raw = localStorage.getItem(AIRTABLE_CFG_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        return parsed && typeof parsed === 'object'
+          ? parsed
+          : { token: '', base: '', table: '', view: '', payloadField: 'payload', dateField: '', plateauField: '',
+              longTable: '', shortTable: '', longView: '', shortView: '',
+              fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active', fRealized: 'realizedPL' };
+      } catch {
+        return { token: '', base: '', table: '', view: '', payloadField: 'payload', dateField: '', plateauField: '',
+                 longTable: '', shortTable: '', longView: '', shortView: '',
+                 fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active', fRealized: 'realizedPL' };
+      }
+    }
+
+    function saveAirtableConfig(cfg) {
+      localStorage.setItem(AIRTABLE_CFG_KEY, JSON.stringify(cfg));
+    }
+
+    function isAirtableConfigured(cfg) {
+      return !!(cfg.token && cfg.base && cfg.table);
+    }
+
+    function syncInputsFromConfig() {
+      const cfg = loadAirtableConfig();
+      if (airtableTokenInput) airtableTokenInput.value = cfg.token || '';
+      if (airtableBaseInput) airtableBaseInput.value = cfg.base || '';
+      if (airtableTableInput) airtableTableInput.value = cfg.table || '';
+      if (airtableViewInput) airtableViewInput.value = cfg.view || '';
+      if (airtablePayloadFieldInput) airtablePayloadFieldInput.value = cfg.payloadField || 'payload';
+      if (airtableDateFieldInput) airtableDateFieldInput.value = cfg.dateField || '';
+      if (airtablePlateauFieldInput) airtablePlateauFieldInput.value = cfg.plateauField || '';
+      if (airtableUrlInput) airtableUrlInput.value = cfg._lastUrl || '';
+      if (airtableLongTableInput) airtableLongTableInput.value = cfg.longTable || '';
+      if (airtableShortTableInput) airtableShortTableInput.value = cfg.shortTable || '';
+      if (airtableLongViewInput) airtableLongViewInput.value = cfg.longView || '';
+      if (airtableShortViewInput) airtableShortViewInput.value = cfg.shortView || '';
+      if (airtableStrikeFieldInput) airtableStrikeFieldInput.value = cfg.fStrike || 'strike';
+      if (airtablePremiumFieldInput) airtablePremiumFieldInput.value = cfg.fPremium || 'premium';
+      if (airtableContractsFieldInput) airtableContractsFieldInput.value = cfg.fContracts || 'contracts';
+      if (airtableActiveFieldInput) airtableActiveFieldInput.value = cfg.fActive || 'active';
+      if (airtableRealizedFieldInput) airtableRealizedFieldInput.value = cfg.fRealized || 'realizedPL';
+    }
+
+    function sanitizeToken(value) {
+      let t = (value || '').trim();
+      if (t.toLowerCase().startsWith('bearer ')) t = t.slice(7);
+      if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+        t = t.slice(1, -1);
+      }
+      return t;
+    }
+
+    function parseAirtableUrl(url) {
+      try {
+        const u = new URL(url);
+        // Esempi supportati: /app.../tbl.../viw... o /app.../tbl...
+        const parts = u.pathname.split('/').filter(Boolean);
+        const base = parts.find(p => p.startsWith('app')) || '';
+        const table = parts.find(p => p.startsWith('tbl')) || '';
+        const view = parts.find(p => p.startsWith('viw')) || '';
+        return { base, table, view };
+      } catch { return { base: '', table: '', view: '' }; }
+    }
+
+    function readConfigFromInputs() {
+      const previous = loadAirtableConfig();
+      const cfg = { ...previous };
+      if (airtableTokenInput) cfg.token = sanitizeToken(airtableTokenInput.value);
+      if (airtableBaseInput) cfg.base = airtableBaseInput.value.trim();
+      if (airtableTableInput) cfg.table = airtableTableInput.value.trim() || 'Snapshots';
+      else cfg.table = cfg.table || 'Snapshots';
+      if (airtableViewInput) cfg.view = airtableViewInput.value.trim();
+      if (airtablePayloadFieldInput) cfg.payloadField = airtablePayloadFieldInput.value.trim() || 'payload';
+      if (airtableDateFieldInput) cfg.dateField = airtableDateFieldInput.value.trim();
+      if (airtablePlateauFieldInput) cfg.plateauField = airtablePlateauFieldInput.value.trim();
+      if (airtableLongTableInput) cfg.longTable = airtableLongTableInput.value.trim();
+      if (airtableShortTableInput) cfg.shortTable = airtableShortTableInput.value.trim();
+      if (airtableLongViewInput) cfg.longView = airtableLongViewInput.value.trim();
+      if (airtableShortViewInput) cfg.shortView = airtableShortViewInput.value.trim();
+      if (airtableStrikeFieldInput) cfg.fStrike = airtableStrikeFieldInput.value.trim() || 'strike';
+      if (airtablePremiumFieldInput) cfg.fPremium = airtablePremiumFieldInput.value.trim() || 'premium';
+      if (airtableContractsFieldInput) cfg.fContracts = airtableContractsFieldInput.value.trim() || 'contracts';
+      if (airtableActiveFieldInput) cfg.fActive = airtableActiveFieldInput.value.trim() || 'active';
+      if (airtableRealizedFieldInput) cfg.fRealized = airtableRealizedFieldInput.value.trim() || 'realizedPL';
+      if (airtableUrlInput) {
+        const urlVal = airtableUrlInput.value.trim();
+        cfg._lastUrl = urlVal;
+        if (urlVal) {
+          const fromUrl = parseAirtableUrl(urlVal);
+          if (!cfg.base && fromUrl.base) cfg.base = fromUrl.base;
+          if (!cfg.table && fromUrl.table) cfg.table = fromUrl.table;
+          if (!cfg.view && fromUrl.view) cfg.view = fromUrl.view;
+        }
+      }
+      saveAirtableConfig(cfg);
+      return cfg;
+    }
+
+    function airtableApiBase(cfg) {
+      return `https://api.airtable.com/v0/${encodeURIComponent(cfg.base)}/${encodeURIComponent(cfg.table)}`;
+    }
+
+    function airtableApiTable(cfg, table) {
+      return `https://api.airtable.com/v0/${encodeURIComponent(cfg.base)}/${encodeURIComponent(table)}`;
+    }
+
+    async function saveSnapshotToAirtable() {
+      const cfg = readConfigFromInputs();
+      if (!isAirtableConfigured(cfg)) {
+        setAirtableStatus('Config Airtable incompleta.', true);
+        return;
+      }
+      try {
+        const payload = buildPayload();
+        const fields = {};
+        if (cfg.payloadField) fields[cfg.payloadField] = JSON.stringify(payload);
+        if (cfg.dateField) fields[cfg.dateField] = payload.generatedAt;
+        if (cfg.plateauField) fields[cfg.plateauField] = payload.summary?.plateauMin ?? null;
+        const body = {
+          records: [
+            {
+              fields
+            }
+          ]
+        };
+        const res = await fetch(airtableApiBase(cfg), {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${cfg.token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          console.error('Airtable save error', res.status, text);
+          throw new Error(`HTTP ${res.status}: ${text || 'Errore sconosciuto'}`);
+        }
+        setAirtableStatus('Snapshot salvato su Airtable.');
+      } catch (err) {
+        console.error(err);
+        setAirtableStatus(String(err.message || err) || 'Errore salvataggio su Airtable.', true);
+      }
+    }
+
+    async function loadLatestFromAirtable() {
+      const cfg = readConfigFromInputs();
+      if (!isAirtableConfigured(cfg)) {
+        setAirtableStatus('Config Airtable incompleta.', true);
+        return;
+      }
+      try {
+        const params = new URLSearchParams();
+        params.set('maxRecords', '1');
+        if (cfg.view) params.set('view', cfg.view);
+        if (cfg.dateField) {
+          params.set('sort[0][field]', cfg.dateField);
+          params.set('sort[0][direction]', 'desc');
+        }
+        const url = `${airtableApiBase(cfg)}?${params.toString()}`;
+        const res = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${cfg.token}` }
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          console.error('Airtable load error', res.status, text);
+          throw new Error(`HTTP ${res.status}: ${text || 'Errore sconosciuto'}`);
+        }
+        const data = await res.json();
+        const rec = data.records?.[0];
+        let raw = null;
+        if (cfg.payloadField) raw = rec?.fields?.[cfg.payloadField] ?? null;
+        if (!raw && rec && rec.fields) {
+          for (const k of Object.keys(rec.fields)) {
+            const v = rec.fields[k];
+            if (typeof v === 'string' && v.trim().startsWith('{') && v.trim().endsWith('}')) { raw = v; break; }
+          }
+        }
+        if (!raw) {
+          setAirtableStatus('Nessun snapshot trovato in Airtable.', true);
+          return;
+        }
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch { parsed = null; }
+        if (!parsed) {
+          setAirtableStatus('Snapshot Airtable non valido.', true);
+          return;
+        }
+        applyImportedData(parsed);
+        updateGeneratedMeta(new Date(parsed.generatedAt || Date.now()));
+        setAirtableStatus('Ultimo snapshot caricato da Airtable.');
+      } catch (err) {
+        console.error(err);
+        setAirtableStatus(String(err.message || err) || 'Errore caricamento da Airtable.', true);
+      }
+    }
+
+    async function testAirtableConnection() {
+      const cfg = readConfigFromInputs();
+      if (!isAirtableConfigured(cfg)) {
+        setAirtableStatus('Config Airtable incompleta.', true);
+        return;
+      }
+      try {
+        const url = `${airtableApiBase(cfg)}?maxRecords=1` + (cfg.view ? `&view=${encodeURIComponent(cfg.view)}` : '');
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${cfg.token}` } });
+        const text = await res.text();
+        if (!res.ok) {
+          console.error('Airtable test error', res.status, text);
+          setAirtableStatus(`Test: HTTP ${res.status}: ${text || 'Errore'}`, true);
+          return;
+        }
+        setAirtableStatus('Test connessione OK.');
+        try { console.log('Airtable test response:', JSON.parse(text)); } catch { console.log('Airtable test response:', text); }
+      } catch (err) {
+        console.error(err);
+        setAirtableStatus('Errore di rete durante il test Airtable.', true);
+      }
+    }
+
+    // ----- Full positions sync -----
+    function fieldMap(cfg) {
+      return {
+        strike: cfg.fStrike || 'strike',
+        premium: cfg.fPremium || 'premium',
+        contracts: cfg.fContracts || 'contracts',
+        active: cfg.fActive || 'active',
+        realized: cfg.fRealized || 'realizedPL'
+      };
+    }
+
+    function fieldsFromRow(row, cfg) {
+      const f = fieldMap(cfg);
+      const fields = {};
+      if (row.strike != null) fields[f.strike] = row.strike;
+      if (row.premium != null) fields[f.premium] = row.premium;
+      if (row.qty != null) fields[f.contracts] = row.qty;
+      fields[f.active] = ensureActive(row.active) === 1;
+      if (row.realized != null) fields[f.realized] = row.realized;
+      return fields;
+    }
+
+    function rowFromFields(rec, cfg) {
+      const f = fieldMap(cfg);
+      const fld = rec.fields || {};
+      return {
+        _airtableId: rec.id,
+        strike: parseNumber(fld[f.strike]),
+        premium: parseNumber(fld[f.premium]),
+        qty: parseNumber(fld[f.contracts]) ?? 1,
+        active: fld[f.active] ? 1 : 0,
+        realized: parseNumber(fld[f.realized])
+      };
+    }
+
+    async function fetchAllRecords(cfg, table, view = '') {
+      const attempt = async (useView) => {
+        const out = [];
+        let offset = '';
+        for (let i = 0; i < 50; i++) {
+          const params = new URLSearchParams();
+          // No pageSize to minimize odd state checks; default is fine
+          if (useView) params.set('view', useView);
+          if (offset) params.set('offset', offset);
+          const url = `${airtableApiTable(cfg, table)}?${params.toString()}`;
+          const res = await fetch(url, { headers: { 'Authorization': `Bearer ${cfg.token}` } });
+          if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            const msg = `HTTP ${res.status}: ${text || 'Errore fetch records'}`;
+            const is422 = res.status === 422 && text.includes('FAILED_STATE_CHECK');
+            if (is422) throw new Error('FAILED_STATE_CHECK');
+            throw new Error(msg);
+          }
+          const data = await res.json();
+          (data.records || []).forEach(r => out.push(r));
+          if (!data.offset) break;
+          offset = data.offset;
+        }
+        return out;
+      };
+
+      try {
+        return await attempt(view);
+      } catch (err) {
+        if (String(err.message).includes('FAILED_STATE_CHECK') && view) {
+          // Retry once without view as fallback
+          return await attempt('');
+        }
+        throw err;
+      }
+    }
+
+    function chunk(arr, size = 10) {
+      const res = [];
+      for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size));
+      return res;
+    }
+
+    async function batchCreate(cfg, table, records) {
+      const created = [];
+      for (const group of chunk(records, 10)) {
+        const body = { records: group.map(fields => ({ fields })) };
+        const res = await fetch(airtableApiTable(cfg, table), {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`HTTP ${res.status}: ${text || 'Errore create'}`);
+        }
+        const data = await res.json();
+        created.push(...(data.records || []));
+      }
+      return created;
+    }
+
+    async function batchUpdate(cfg, table, updates) {
+      // updates: [{id, fields}]
+      const updated = [];
+      for (const group of chunk(updates, 10)) {
+        const body = { records: group };
+        const res = await fetch(airtableApiTable(cfg, table), {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`HTTP ${res.status}: ${text || 'Errore update'}`);
+        }
+        const data = await res.json();
+        updated.push(...(data.records || []));
+      }
+      return updated;
+    }
+
+    async function pushPositionsToAirtable() {
+      const cfg = readConfigFromInputs();
+      if (!isAirtableConfigured(cfg) || !cfg.longTable || !cfg.shortTable) {
+        setAirtableStatus('Config Airtable incompleta (tabelle long/short).', true);
+        return;
+      }
+      try {
+        // LONG
+        const longRows = state.longRows.slice();
+        const longToCreate = [];
+        const longToUpdate = [];
+        longRows.forEach(row => {
+          const fields = fieldsFromRow(row, cfg);
+          if (row._airtableId) longToUpdate.push({ id: row._airtableId, fields });
+          else longToCreate.push(fields);
+        });
+        // SHORT
+        const shortRows = state.shortRows.slice();
+        const shortToCreate = [];
+        const shortToUpdate = [];
+        shortRows.forEach(row => {
+          const fields = fieldsFromRow(row, cfg);
+          if (row._airtableId) shortToUpdate.push({ id: row._airtableId, fields });
+          else shortToCreate.push(fields);
+        });
+
+        // Execute
+        if (longToCreate.length) {
+          const created = await batchCreate(cfg, cfg.longTable, longToCreate);
+          // Map created IDs back to rows in order
+          let idx = 0;
+          longRows.forEach(row => { if (!row._airtableId) row._airtableId = created[idx++]?.id || row._airtableId; });
+        }
+        if (shortToCreate.length) {
+          const created = await batchCreate(cfg, cfg.shortTable, shortToCreate);
+          let idx = 0;
+          shortRows.forEach(row => { if (!row._airtableId) row._airtableId = created[idx++]?.id || row._airtableId; });
+        }
+        if (longToUpdate.length) await batchUpdate(cfg, cfg.longTable, longToUpdate);
+        if (shortToUpdate.length) await batchUpdate(cfg, cfg.shortTable, shortToUpdate);
+
+        // Persist back to state
+        state.longRows = longRows;
+        state.shortRows = shortRows;
+        setAirtableStatus('Sincronizzazione posizioni → Airtable completata.');
+      } catch (err) {
+        console.error(err);
+        setAirtableStatus(String(err.message || err) || 'Errore sync verso Airtable.', true);
+      }
+    }
+
+    async function pullPositionsFromAirtable() {
+      const cfg = readConfigFromInputs();
+      if (!isAirtableConfigured(cfg) || !cfg.longTable || !cfg.shortTable) {
+        setAirtableStatus('Config Airtable incompleta (tabelle long/short).', true);
+        return;
+      }
+      try {
+        const [longRecs, shortRecs] = await Promise.all([
+          fetchAllRecords(cfg, cfg.longTable, cfg.longView || cfg.view),
+          fetchAllRecords(cfg, cfg.shortTable, cfg.shortView || cfg.view)
+        ]);
+        state.longRows = longRecs.map((r, i) => { const o = rowFromFields(r, cfg); o._airtableOrder = i; return o; });
+        state.shortRows = shortRecs.map((r, i) => { const o = rowFromFields(r, cfg); o._airtableOrder = i; return o; });
+        renderTables();
+        updateSummary();
+        setAirtableStatus('Posizioni caricate da Airtable.');
+      } catch (err) {
+        console.error(err);
+        setAirtableStatus(String(err.message || err) || 'Errore caricamento posizioni da Airtable.', true);
+      }
+    }
+
+    // Init + listeners
+    syncInputsFromConfig();
+    if (airtableTokenInput) airtableTokenInput.addEventListener('change', readConfigFromInputs);
+    if (airtableBaseInput) airtableBaseInput.addEventListener('change', readConfigFromInputs);
+    if (airtableTableInput) airtableTableInput.addEventListener('change', readConfigFromInputs);
+    const airtableSaveSnapshotBtn = document.getElementById('airtableSaveSnapshot');
+    if (airtableSaveSnapshotBtn) airtableSaveSnapshotBtn.addEventListener('click', saveSnapshotToAirtable);
+    const airtableLoadLatestBtn = document.getElementById('airtableLoadLatest');
+    if (airtableLoadLatestBtn) airtableLoadLatestBtn.addEventListener('click', loadLatestFromAirtable);
+    const airtableTestBtn = document.getElementById('airtableTest');
+    if (airtableTestBtn) airtableTestBtn.addEventListener('click', testAirtableConnection);
+    document.getElementById('airtablePushAll').addEventListener('click', pushPositionsToAirtable);
+    document.getElementById('airtablePullAll').addEventListener('click', pullPositionsFromAirtable);
   </script>
 </body>
 </html>

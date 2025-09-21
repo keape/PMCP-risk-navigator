@@ -354,11 +354,11 @@
       <div class="file-tools">
         <label>
           <span>Tabella LONG (nome o ID)</span>
-          <input id="airtableLongTable" type="text" placeholder="LongPositions o tbl..." />
+          <input id="airtableLongTable" type="text" value="LongPositions" placeholder="LongPositions" readonly />
         </label>
         <label>
           <span>Tabella SHORT (nome o ID)</span>
-          <input id="airtableShortTable" type="text" placeholder="ShortPositions o tbl..." />
+          <input id="airtableShortTable" type="text" value="ShortPositions" placeholder="ShortPositions" readonly />
         </label>
         <label>
           <span>View LONG (opzionale)</span>
@@ -1069,6 +1069,8 @@
 
     // --- Airtable integration (snapshot-based) ---
     const AIRTABLE_CFG_KEY = 'airtableConfig.v2';
+    const DEFAULT_LONG_TABLE = 'LongPositions';
+    const DEFAULT_SHORT_TABLE = 'ShortPositions';
     const airtableTokenInput = document.getElementById('airtableToken');
     const airtableBaseInput = document.getElementById('airtableBase');
     const airtableTableInput = document.getElementById('airtableTable');
@@ -1091,14 +1093,17 @@
       try {
         const raw = localStorage.getItem(AIRTABLE_CFG_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
-        return parsed && typeof parsed === 'object'
-          ? parsed
-          : { token: '', base: '', table: '', view: '', payloadField: 'payload', dateField: '', plateauField: '',
-              longTable: '', shortTable: '', longView: '', shortView: '',
-              fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active', fRealized: 'realizedPL' };
+        if (parsed && typeof parsed === 'object') {
+          if (!parsed.longTable) parsed.longTable = DEFAULT_LONG_TABLE;
+          if (!parsed.shortTable) parsed.shortTable = DEFAULT_SHORT_TABLE;
+          return parsed;
+        }
+        return { token: '', base: '', table: '', view: '', payloadField: 'payload', dateField: '', plateauField: '',
+                 longTable: DEFAULT_LONG_TABLE, shortTable: DEFAULT_SHORT_TABLE, longView: '', shortView: '',
+                 fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active', fRealized: 'realizedPL' };
       } catch {
         return { token: '', base: '', table: '', view: '', payloadField: 'payload', dateField: '', plateauField: '',
-                 longTable: '', shortTable: '', longView: '', shortView: '',
+                 longTable: DEFAULT_LONG_TABLE, shortTable: DEFAULT_SHORT_TABLE, longView: '', shortView: '',
                  fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active', fRealized: 'realizedPL' };
       }
     }
@@ -1121,8 +1126,8 @@
       if (airtableDateFieldInput) airtableDateFieldInput.value = cfg.dateField || '';
       if (airtablePlateauFieldInput) airtablePlateauFieldInput.value = cfg.plateauField || '';
       if (airtableUrlInput) airtableUrlInput.value = cfg._lastUrl || '';
-      if (airtableLongTableInput) airtableLongTableInput.value = cfg.longTable || '';
-      if (airtableShortTableInput) airtableShortTableInput.value = cfg.shortTable || '';
+      if (airtableLongTableInput) airtableLongTableInput.value = cfg.longTable || DEFAULT_LONG_TABLE;
+      if (airtableShortTableInput) airtableShortTableInput.value = cfg.shortTable || DEFAULT_SHORT_TABLE;
       if (airtableLongViewInput) airtableLongViewInput.value = cfg.longView || '';
       if (airtableShortViewInput) airtableShortViewInput.value = cfg.shortView || '';
       if (airtableStrikeFieldInput) airtableStrikeFieldInput.value = cfg.fStrike || 'strike';
@@ -1164,8 +1169,10 @@
       if (airtablePayloadFieldInput) cfg.payloadField = airtablePayloadFieldInput.value.trim() || 'payload';
       if (airtableDateFieldInput) cfg.dateField = airtableDateFieldInput.value.trim();
       if (airtablePlateauFieldInput) cfg.plateauField = airtablePlateauFieldInput.value.trim();
-      if (airtableLongTableInput) cfg.longTable = airtableLongTableInput.value.trim();
-      if (airtableShortTableInput) cfg.shortTable = airtableShortTableInput.value.trim();
+      if (airtableLongTableInput) cfg.longTable = airtableLongTableInput.value.trim() || DEFAULT_LONG_TABLE;
+      else cfg.longTable = cfg.longTable || DEFAULT_LONG_TABLE;
+      if (airtableShortTableInput) cfg.shortTable = airtableShortTableInput.value.trim() || DEFAULT_SHORT_TABLE;
+      else cfg.shortTable = cfg.shortTable || DEFAULT_SHORT_TABLE;
       if (airtableLongViewInput) cfg.longView = airtableLongViewInput.value.trim();
       if (airtableShortViewInput) cfg.shortView = airtableShortViewInput.value.trim();
       if (airtableStrikeFieldInput) cfg.fStrike = airtableStrikeFieldInput.value.trim() || 'strike';
@@ -1499,6 +1506,18 @@
       }
     }
 
+    function attemptAutoLoadFromAirtable() {
+      const storedCfg = loadAirtableConfig();
+      if (!storedCfg || !storedCfg.token || !storedCfg.base) return;
+      if (!storedCfg.table) storedCfg.table = 'Snapshots';
+      if (!storedCfg.longTable) storedCfg.longTable = DEFAULT_LONG_TABLE;
+      if (!storedCfg.shortTable) storedCfg.shortTable = DEFAULT_SHORT_TABLE;
+      saveAirtableConfig(storedCfg);
+      syncInputsFromConfig();
+      setAirtableStatus('Caricamento automatico da Airtable...');
+      pullPositionsFromAirtable();
+    }
+
     // Init + listeners
     syncInputsFromConfig();
     if (airtableTokenInput) airtableTokenInput.addEventListener('change', readConfigFromInputs);
@@ -1512,6 +1531,7 @@
     if (airtableTestBtn) airtableTestBtn.addEventListener('click', testAirtableConnection);
     document.getElementById('airtablePushAll').addEventListener('click', pushPositionsToAirtable);
     document.getElementById('airtablePullAll').addEventListener('click', pullPositionsFromAirtable);
+    attemptAutoLoadFromAirtable();
   </script>
 </body>
 </html>

@@ -352,14 +352,9 @@
     <section>
       <h2>Transazioni ↔ Airtable</h2>
       <div class="file-tools">
-        <label>
-          <span>Tabella LONG (nome o ID)</span>
-          <input id="airtableLongTable" type="text" value="LongPositions" placeholder="LongPositions" readonly />
-        </label>
-        <label>
-          <span>Tabella SHORT (nome o ID)</span>
-          <input id="airtableShortTable" type="text" value="ShortPositions" placeholder="ShortPositions" readonly />
-        </label>
+        <p style="margin:0;color:#cbd5f5;font-size:0.9rem;">
+          Le posizioni vengono lette automaticamente da Airtable usando le tabelle fisse <code>LongPositions</code> e <code>ShortPositions</code>.
+        </p>
         <label>
           <span>View LONG (opzionale)</span>
           <input id="airtableLongView" type="text" placeholder="viw... o nome view Long" />
@@ -1169,10 +1164,10 @@
       if (airtablePayloadFieldInput) cfg.payloadField = airtablePayloadFieldInput.value.trim() || 'payload';
       if (airtableDateFieldInput) cfg.dateField = airtableDateFieldInput.value.trim();
       if (airtablePlateauFieldInput) cfg.plateauField = airtablePlateauFieldInput.value.trim();
-      if (airtableLongTableInput) cfg.longTable = airtableLongTableInput.value.trim() || DEFAULT_LONG_TABLE;
-      else cfg.longTable = cfg.longTable || DEFAULT_LONG_TABLE;
-      if (airtableShortTableInput) cfg.shortTable = airtableShortTableInput.value.trim() || DEFAULT_SHORT_TABLE;
-      else cfg.shortTable = cfg.shortTable || DEFAULT_SHORT_TABLE;
+      const longInputValue = airtableLongTableInput ? airtableLongTableInput.value.trim() : '';
+      const shortInputValue = airtableShortTableInput ? airtableShortTableInput.value.trim() : '';
+      cfg.longTable = longInputValue || DEFAULT_LONG_TABLE;
+      cfg.shortTable = shortInputValue || DEFAULT_SHORT_TABLE;
       if (airtableLongViewInput) cfg.longView = airtableLongViewInput.value.trim();
       if (airtableShortViewInput) cfg.shortView = airtableShortViewInput.value.trim();
       if (airtableStrikeFieldInput) cfg.fStrike = airtableStrikeFieldInput.value.trim() || 'strike';

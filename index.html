@@ -230,13 +230,12 @@
       <h1>PMCP – Portfolio Plateau (multi-long &amp; multi-short)</h1>
       <div class="meta" id="generatedMeta"></div>
       <p class="intro-note">
-        Compila le tabelle. Inserisci 1 nella colonna "Active" quando l'opzione è aperta, 0 quando è chiusa. La colonna
-        "Realized_P/L" raccoglie i risultati già chiusi. Tutti i calcoli vengono eseguiti direttamente in questa pagina.
+        Compila le tabelle. Inserisci 1 nella colonna "Active" quando l'opzione è aperta, 0 quando è chiusa. Tutti i calcoli vengono eseguiti direttamente in questa pagina.
       </p>
     </header>
 
     <section>
-      <h2>Long puts (LEAP) — Active &amp; Realized</h2>
+      <h2>Long puts (LEAP) — Active</h2>
       <div class="table-wrapper">
         <table>
           <thead>
@@ -245,7 +244,6 @@
               <th scope="col">Premium_Paid (tot)</th>
               <th scope="col">Qty</th>
               <th scope="col">Active (1/0)</th>
-              <th scope="col">Realized_P/L</th>
               <th scope="col" style="width:70px;">&nbsp;</th>
             </tr>
           </thead>
@@ -259,7 +257,7 @@
     </section>
 
     <section>
-      <h2>Short puts (settimanali) — Active &amp; Realized</h2>
+      <h2>Short puts (settimanali) — Active</h2>
       <div class="table-wrapper">
         <table>
           <thead>
@@ -268,7 +266,6 @@
               <th scope="col">Premium_Recv (tot)</th>
               <th scope="col">Qty</th>
               <th scope="col">Active (1/0)</th>
-              <th scope="col">Realized_P/L</th>
               <th scope="col" style="width:70px;">&nbsp;</th>
             </tr>
           </thead>
@@ -293,7 +290,7 @@
           <span id="summaryShort" class="value">$0</span>
         </div>
         <div class="summary-card">
-          <span class="label">Realized cashflow (closed)</span>
+          <span class="label">Realized cashflow (premi netti)</span>
           <span id="summaryRealized" class="value">$0</span>
         </div>
         <div class="summary-card">
@@ -309,9 +306,9 @@
         <p><strong>Meaning:</strong></p>
         <p>Il payoff netto delle put long attive nello scenario estremo S=0 corrisponde all'incasso teorico meno il premio pagato.</p>
         <p>La metrica delle short put attive mostra quanto resterebbe se fossero esercitate oggi: premi incassati meno esborso per lo strike (strike × 100).</p>
-        <p>I risultati già chiusi rappresentano la somma dei profitti e delle perdite realizzate su posizioni long e short.</p>
+        <p>La cassa realized corrisponde alla somma netta dei premi pagati sulle long e incassati sulle short, indipendentemente dallo stato attivo.</p>
         <p>Il plateau minimo del portafoglio sintetizza la perdita massima (o il guadagno minimo) ipotizzando che oggi l'underlying valga S=0.</p>
-        <p>Il plateau massimo (bullish) descrive lo scenario opposto: se S è molto superiore a tutti gli strike (S ≫ K), le long put scadono senza valore (perdita pari ai premi pagati) e le short put trattengono i premi incassati. Quindi plateau_max ≈ realized + Σ(premi short attive) − Σ(premi long attive).</p>
+        <p>Il plateau massimo (bullish) descrive lo scenario opposto: se S è molto superiore a tutti gli strike (S ≫ K), le long put scadono senza valore (perdita pari ai premi pagati) e le short put trattengono i premi incassati. Quindi plateau_max coincide con la cassa realized (premi netti).</p>
       </div>
     </section>
 
@@ -380,7 +377,6 @@
           <label><span>Campo premium</span><input id="airtablePremiumField" type="text" placeholder="premium" /></label>
           <label><span>Campo contracts</span><input id="airtableContractsField" type="text" placeholder="contracts" /></label>
           <label><span>Campo active</span><input id="airtableActiveField" type="text" placeholder="active" /></label>
-          <label><span>Campo realized P/L</span><input id="airtableRealizedField" type="text" placeholder="realizedPL" /></label>
         </div>
         <div>
           <button id="airtablePushAll">Sincronizza su Airtable (tutte le posizioni)</button>
@@ -389,7 +385,7 @@
         </div>
         <div class="status-line" id="airtableStatus"></div>
         <p style="margin:0;color:#94a3b8;font-size:0.9rem;">
-          Suggerito: crea due tabelle (LongPositions, ShortPositions) con campi: strike (Number), premium (Number), contracts (Number), active (Checkbox), realizedPL (Number).
+          Suggerito: crea due tabelle (LongPositions, ShortPositions) con campi: strike (Number), premium (Number), contracts (Number), active (Checkbox).
         </p>
       </div>
     </section>
@@ -471,21 +467,21 @@
     }
 
     function cloneRowTemplate() {
-      return { strike: null, premium: null, qty: 1, active: 1, realized: null };
+      return { strike: null, premium: null, qty: 1, active: 1 };
     }
 
     const defaultLongRows = () => ([
-      { strike: 550, premium: 3080, qty: 1, active: 1, realized: null },
-      { strike: 590, premium: 3980, qty: 1, active: 1, realized: null }
+      { strike: 550, premium: 3080, qty: 1, active: 1 },
+      { strike: 590, premium: 3980, qty: 1, active: 1 }
     ]);
 
     const defaultShortRows = () => ([
-      { strike: 550, premium: 400, qty: 1, active: 0, realized: 400 },
-      { strike: 560, premium: 400, qty: 1, active: 0, realized: 400 },
-      { strike: 570, premium: 400, qty: 1, active: 0, realized: 400 },
-      { strike: 580, premium: 400, qty: 1, active: 0, realized: 400 },
-      { strike: 590, premium: 400, qty: 1, active: 1, realized: 400 },
-      { strike: 600, premium: 400, qty: 1, active: 1, realized: null }
+      { strike: 550, premium: 400, qty: 1, active: 0 },
+      { strike: 560, premium: 400, qty: 1, active: 0 },
+      { strike: 570, premium: 400, qty: 1, active: 0 },
+      { strike: 580, premium: 400, qty: 1, active: 0 },
+      { strike: 590, premium: 400, qty: 1, active: 1 },
+      { strike: 600, premium: 400, qty: 1, active: 1 }
     ]);
 
     const state = {
@@ -556,8 +552,6 @@
         });
         activeCell.appendChild(activeInput);
 
-        const realizedCell = buildNumberCell('realized', '0.01');
-
         const actionCell = document.createElement('td');
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
@@ -574,7 +568,6 @@
         tr.appendChild(premiumCell);
         tr.appendChild(qtyCell);
         tr.appendChild(activeCell);
-        tr.appendChild(realizedCell);
         tr.appendChild(actionCell);
         body.appendChild(tr);
       });
@@ -587,8 +580,8 @@
 
     function sumActiveLong() {
       return state.longRows.reduce((sum, row) => {
-        if (ensureActive(row.active) === 1 && row.strike != null && row.premium != null && row.qty != null) {
-          return sum + ((row.strike * CONTRACT_MULTIPLIER - row.premium) * row.qty);
+        if (ensureActive(row.active) === 1 && row.strike != null && row.qty != null) {
+          return sum + (row.strike * CONTRACT_MULTIPLIER * row.qty);
         }
         return sum;
       }, 0);
@@ -596,49 +589,39 @@
 
     function sumActiveShort() {
       return state.shortRows.reduce((sum, row) => {
-        if (ensureActive(row.active) === 1 && row.strike != null && row.premium != null && row.qty != null) {
-          return sum + ((row.premium - row.strike * CONTRACT_MULTIPLIER) * row.qty);
+        if (ensureActive(row.active) === 1 && row.strike != null && row.qty != null) {
+          return sum - (row.strike * CONTRACT_MULTIPLIER * row.qty);
         }
         return sum;
       }, 0);
     }
 
     function sumBullishLongComponent() {
-      // Long puts at S >> K: intrinsic = 0, net = -premium * qty
-      return state.longRows.reduce((sum, row) => {
-        if (ensureActive(row.active) === 1 && row.premium != null && row.qty != null) {
-          return sum + (-row.premium * row.qty);
-        }
-        return sum;
-      }, 0);
+      // Long puts at S >> K: nessun valore intrinseco residuo (premio già incluso nei realized)
+      return 0;
     }
 
     function sumBullishShortComponent() {
-      // Short puts at S >> K: intrinsic = 0, net = +premium * qty
-      return state.shortRows.reduce((sum, row) => {
-        if (ensureActive(row.active) === 1 && row.premium != null && row.qty != null) {
+      // Short puts at S >> K: nessun valore intrinseco residuo (premio già incluso nei realized)
+      return 0;
+    }
+
+    function sumRealized() {
+      const longPremiums = state.longRows.reduce((sum, row) => {
+        if (row.premium != null && row.qty != null) {
+          return sum - (row.premium * row.qty);
+        }
+        return sum;
+      }, 0);
+
+      const shortPremiums = state.shortRows.reduce((sum, row) => {
+        if (row.premium != null && row.qty != null) {
           return sum + (row.premium * row.qty);
         }
         return sum;
       }, 0);
-    }
 
-    function sumRealized() {
-      const realizedLong = state.longRows.reduce((sum, row) => {
-        if (ensureActive(row.active) === 0 && row.realized != null) {
-          return sum + row.realized;
-        }
-        return sum;
-      }, 0);
-
-      const realizedShort = state.shortRows.reduce((sum, row) => {
-        if (ensureActive(row.active) === 0 && row.realized != null) {
-          return sum + row.realized;
-        }
-        return sum;
-      }, 0);
-
-      return realizedLong + realizedShort;
+      return longPremiums + shortPremiums;
     }
 
     function updateSummary() {
@@ -684,13 +667,12 @@
 
     function cleanRows(rows) {
       return rows
-        .filter(row => row.strike != null || row.premium != null || row.realized != null)
+        .filter(row => row.strike != null || row.premium != null)
         .map(row => ({
           strike: row.strike ?? 0,
           premium: row.premium ?? 0,
           contracts: row.qty ?? 0,
-          active: ensureActive(row.active) === 1,
-          realizedPL: row.realized ?? 0
+          active: ensureActive(row.active) === 1
         }));
     }
 
@@ -794,8 +776,7 @@
             strike: parseNumber(item.strike),
             premium: parseNumber(item.premium),
             qty: parseNumber(item.contracts) ?? 1,
-            active: item.active ? 1 : 0,
-            realized: parseNumber(item.realizedPL)
+            active: item.active ? 1 : 0
           }));
         }
 
@@ -804,8 +785,7 @@
             strike: parseNumber(item.strike),
             premium: parseNumber(item.premium),
             qty: parseNumber(item.contracts) ?? 1,
-            active: item.active ? 1 : 0,
-            realized: parseNumber(item.realizedPL)
+            active: item.active ? 1 : 0
           }));
         }
 
@@ -817,9 +797,9 @@
     // ---- Plateau chart ----
     function payoffLongAtS(S) {
       return state.longRows.reduce((sum, row) => {
-        if (ensureActive(row.active) === 1 && row.strike != null && row.premium != null && row.qty != null) {
+        if (ensureActive(row.active) === 1 && row.strike != null && row.qty != null) {
           const intrinsic = Math.max((row.strike - S), 0) * CONTRACT_MULTIPLIER;
-          return sum + (intrinsic - row.premium) * row.qty;
+          return sum + (intrinsic * row.qty);
         }
         return sum;
       }, 0);
@@ -827,9 +807,9 @@
 
     function payoffShortAtS(S) {
       return state.shortRows.reduce((sum, row) => {
-        if (ensureActive(row.active) === 1 && row.strike != null && row.premium != null && row.qty != null) {
+        if (ensureActive(row.active) === 1 && row.strike != null && row.qty != null) {
           const intrinsic = Math.max((row.strike - S), 0) * CONTRACT_MULTIPLIER;
-          return sum + (row.premium - intrinsic) * row.qty;
+          return sum - (intrinsic * row.qty);
         }
         return sum;
       }, 0);
@@ -1097,7 +1077,6 @@
     const airtablePremiumFieldInput = document.getElementById('airtablePremiumField');
     const airtableContractsFieldInput = document.getElementById('airtableContractsField');
     const airtableActiveFieldInput = document.getElementById('airtableActiveField');
-    const airtableRealizedFieldInput = document.getElementById('airtableRealizedField');
 
     function loadAirtableConfig() {
       try {
@@ -1113,11 +1092,11 @@
         }
         return { token: DEFAULT_AIRTABLE_TOKEN, base: DEFAULT_AIRTABLE_BASE, table: DEFAULT_SNAPSHOT_TABLE, view: '', payloadField: 'payload', dateField: '', plateauField: '',
                  longTable: DEFAULT_LONG_TABLE, shortTable: DEFAULT_SHORT_TABLE, longView: '', shortView: '',
-                 fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active', fRealized: 'realizedPL' };
+                 fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active' };
       } catch {
         return { token: DEFAULT_AIRTABLE_TOKEN, base: DEFAULT_AIRTABLE_BASE, table: DEFAULT_SNAPSHOT_TABLE, view: '', payloadField: 'payload', dateField: '', plateauField: '',
                  longTable: DEFAULT_LONG_TABLE, shortTable: DEFAULT_SHORT_TABLE, longView: '', shortView: '',
-                 fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active', fRealized: 'realizedPL' };
+                 fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active' };
       }
     }
 
@@ -1151,7 +1130,6 @@
       if (airtablePremiumFieldInput) airtablePremiumFieldInput.value = cfg.fPremium || 'premium';
       if (airtableContractsFieldInput) airtableContractsFieldInput.value = cfg.fContracts || 'contracts';
       if (airtableActiveFieldInput) airtableActiveFieldInput.value = cfg.fActive || 'active';
-      if (airtableRealizedFieldInput) airtableRealizedFieldInput.value = cfg.fRealized || 'realizedPL';
     }
 
     function sanitizeToken(value) {
@@ -1198,7 +1176,6 @@
       if (airtablePremiumFieldInput) cfg.fPremium = airtablePremiumFieldInput.value.trim() || 'premium';
       if (airtableContractsFieldInput) cfg.fContracts = airtableContractsFieldInput.value.trim() || 'contracts';
       if (airtableActiveFieldInput) cfg.fActive = airtableActiveFieldInput.value.trim() || 'active';
-      if (airtableRealizedFieldInput) cfg.fRealized = airtableRealizedFieldInput.value.trim() || 'realizedPL';
       if (airtableUrlInput) {
         const urlVal = airtableUrlInput.value.trim();
         cfg._lastUrl = urlVal;
@@ -1341,8 +1318,7 @@
         strike: cfg.fStrike || 'strike',
         premium: cfg.fPremium || 'premium',
         contracts: cfg.fContracts || 'contracts',
-        active: cfg.fActive || 'active',
-        realized: cfg.fRealized || 'realizedPL'
+        active: cfg.fActive || 'active'
       };
     }
 
@@ -1353,7 +1329,6 @@
       if (row.premium != null) fields[f.premium] = row.premium;
       if (row.qty != null) fields[f.contracts] = row.qty;
       fields[f.active] = ensureActive(row.active) === 1;
-      if (row.realized != null) fields[f.realized] = row.realized;
       return fields;
     }
 
@@ -1365,8 +1340,7 @@
         strike: parseNumber(fld[f.strike]),
         premium: parseNumber(fld[f.premium]),
         qty: parseNumber(fld[f.contracts]) ?? 1,
-        active: fld[f.active] ? 1 : 0,
-        realized: parseNumber(fld[f.realized])
+        active: fld[f.active] ? 1 : 0
       };
     }
 

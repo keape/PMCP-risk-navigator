@@ -222,6 +222,28 @@
       box-shadow: 0 10px 22px rgba(0,0,0,0.35);
       min-width: 140px;
     }
+
+    .filter-controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .filter-controls label {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.9rem;
+      color: #cbd5f5;
+    }
+
+    .filter-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
   </style>
 </head>
 <body>
@@ -242,6 +264,7 @@
             <tr>
               <th scope="col">Strike_KL</th>
               <th scope="col">Premium_Paid (tot)</th>
+              <th scope="col">Trade_Date</th>
               <th scope="col">Qty</th>
               <th scope="col">Active (1/0)</th>
               <th scope="col" style="width:70px;">&nbsp;</th>
@@ -264,6 +287,7 @@
             <tr>
               <th scope="col">Strike_KS</th>
               <th scope="col">Premium_Recv (tot)</th>
+              <th scope="col">Trade_Date</th>
               <th scope="col">Qty</th>
               <th scope="col">Active (1/0)</th>
               <th scope="col" style="width:70px;">&nbsp;</th>
@@ -309,6 +333,31 @@
         <p>La cassa realized corrisponde alla somma netta dei premi pagati sulle long e incassati sulle short, indipendentemente dallo stato attivo.</p>
         <p>Il plateau minimo del portafoglio sintetizza la perdita massima (o il guadagno minimo) ipotizzando che oggi l'underlying valga S=0.</p>
         <p>Il plateau massimo (bullish) descrive lo scenario opposto: se S è molto superiore a tutti gli strike (S ≫ K), le long put scadono senza valore (perdita pari ai premi pagati) e le short put trattengono i premi incassati. Quindi plateau_max coincide con la cassa realized (premi netti).</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Filtro transazioni per periodo</h2>
+      <div class="filter-controls">
+        <label>
+          <span>Periodo (mese/anno)</span>
+          <input id="filterMonth" type="month" />
+        </label>
+        <button id="filterClear" class="secondary" type="button">Azzera filtro</button>
+      </div>
+      <div class="filter-summary">
+        <div class="summary-card">
+          <span class="label">Premi pagati (long)</span>
+          <span id="summaryFilterPaid" class="value">$0</span>
+        </div>
+        <div class="summary-card">
+          <span class="label">Premi ricevuti (short)</span>
+          <span id="summaryFilterReceived" class="value">$0</span>
+        </div>
+        <div class="summary-card">
+          <span class="label">Saldo netto periodo</span>
+          <span id="summaryFilterNet" class="value">$0</span>
+        </div>
       </div>
     </section>
 
@@ -375,6 +424,7 @@
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
           <label><span>Campo strike</span><input id="airtableStrikeField" type="text" placeholder="strike" /></label>
           <label><span>Campo premium</span><input id="airtablePremiumField" type="text" placeholder="premium" /></label>
+          <label><span>Campo data trade</span><input id="airtableTradeDateField" type="text" placeholder="tradeDate" /></label>
           <label><span>Campo contracts</span><input id="airtableContractsField" type="text" placeholder="contracts" /></label>
           <label><span>Campo active</span><input id="airtableActiveField" type="text" placeholder="active" /></label>
         </div>
@@ -385,7 +435,7 @@
         </div>
         <div class="status-line" id="airtableStatus"></div>
         <p style="margin:0;color:#94a3b8;font-size:0.9rem;">
-          Suggerito: crea due tabelle (LongPositions, ShortPositions) con campi: strike (Number), premium (Number), contracts (Number), active (Checkbox).
+          Suggerito: crea due tabelle (LongPositions, ShortPositions) con campi: strike (Number), premium (Number), tradeDate (Date), contracts (Number), active (Checkbox).
         </p>
       </div>
     </section>
@@ -415,6 +465,9 @@
     const summaryRealized = document.getElementById('summaryRealized');
     const summaryPlateau = document.getElementById('summaryPlateau');
     const summaryPlateauBullish = document.getElementById('summaryPlateauBullish');
+    const summaryFilterPaid = document.getElementById('summaryFilterPaid');
+    const summaryFilterReceived = document.getElementById('summaryFilterReceived');
+    const summaryFilterNet = document.getElementById('summaryFilterNet');
     const statusLine = document.getElementById('statusLine');
     const airtableStatusLine = document.getElementById('airtableStatus');
     const generatedMeta = document.getElementById('generatedMeta');
@@ -427,6 +480,8 @@
     const chkShowLong = document.getElementById('showLong');
     const chkShowShort = document.getElementById('showShort');
     const chkShowArea = document.getElementById('showArea');
+    const filterMonthInput = document.getElementById('filterMonth');
+    const filterClearBtn = document.getElementById('filterClear');
 
     const CHART_TOGGLES_KEY = 'chartToggles.v2';
     function loadChartToggles(){
@@ -467,32 +522,81 @@
     }
 
     function cloneRowTemplate() {
-      return { strike: null, premium: null, qty: 1, active: 1 };
+      return { strike: null, premium: null, date: null, qty: 1, active: 1 };
     }
 
     const defaultLongRows = () => ([
-      { strike: 550, premium: 3080, qty: 1, active: 1 },
-      { strike: 590, premium: 3980, qty: 1, active: 1 }
+      { strike: 550, premium: 3080, date: '2023-01-15', qty: 1, active: 1 },
+      { strike: 590, premium: 3980, date: '2023-03-20', qty: 1, active: 1 }
     ]);
 
     const defaultShortRows = () => ([
-      { strike: 550, premium: 400, qty: 1, active: 0 },
-      { strike: 560, premium: 400, qty: 1, active: 0 },
-      { strike: 570, premium: 400, qty: 1, active: 0 },
-      { strike: 580, premium: 400, qty: 1, active: 0 },
-      { strike: 590, premium: 400, qty: 1, active: 1 },
-      { strike: 600, premium: 400, qty: 1, active: 1 }
+      { strike: 550, premium: 400, date: '2024-05-01', qty: 1, active: 0 },
+      { strike: 560, premium: 400, date: '2024-05-08', qty: 1, active: 0 },
+      { strike: 570, premium: 400, date: '2024-05-15', qty: 1, active: 0 },
+      { strike: 580, premium: 400, date: '2024-05-22', qty: 1, active: 0 },
+      { strike: 590, premium: 400, date: '2024-05-29', qty: 1, active: 1 },
+      { strike: 600, premium: 400, date: null, qty: 1, active: 1 }
     ]);
 
     const state = {
       longRows: defaultLongRows(),
-      shortRows: defaultShortRows()
+      shortRows: defaultShortRows(),
+      filter: { year: null, month: null }
     };
 
     function parseNumber(value) {
       if (value === '' || value === null || value === undefined) return null;
       const numeric = Number(value);
       return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    function normalizeDateForInput(value) {
+      if (!value) return '';
+      if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+      }
+      const str = String(value).trim();
+      if (!str) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      const parsed = new Date(str);
+      if (Number.isNaN(parsed.getTime())) return '';
+      return parsed.toISOString().slice(0, 10);
+    }
+
+    function normalizeDateValue(value) {
+      if (!value) return null;
+      if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+      }
+      const str = String(value).trim();
+      if (!str) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      const parsed = new Date(str);
+      if (Number.isNaN(parsed.getTime())) return null;
+      return parsed.toISOString().slice(0, 10);
+    }
+
+    function parseMonthInput(value) {
+      const raw = (value || '').trim();
+      if (!raw) return { year: null, month: null };
+      const parts = raw.split('-');
+      if (parts.length !== 2) return { year: null, month: null };
+      const year = Number(parts[0]);
+      const month = Number(parts[1]);
+      if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+        return { year: null, month: null };
+      }
+      return { year, month };
+    }
+
+    function matchesFilter(row) {
+      const { year, month } = state.filter;
+      if (!year || !month) return true;
+      const normalized = normalizeDateValue(row?.date);
+      if (!normalized) return false;
+      const [rowYear, rowMonth] = normalized.split('-');
+      return Number(rowYear) === year && Number(rowMonth) === month;
     }
 
     function ensureActive(value) {
@@ -535,8 +639,24 @@
           return td;
         }
 
+        function buildDateCell(key) {
+          const td = document.createElement('td');
+          const input = document.createElement('input');
+          input.type = 'date';
+          input.value = row[key] ? normalizeDateForInput(row[key]) : '';
+          input.addEventListener('input', () => {
+            const value = normalizeDateValue(input.value);
+            row[key] = value;
+            renderTable(body, rows, type);
+            updateSummary();
+          });
+          td.appendChild(input);
+          return td;
+        }
+
         const strikeCell = buildNumberCell('strike', '0.01', 0);
         const premiumCell = buildNumberCell('premium', '0.01', 0);
+        const dateCell = buildDateCell('date');
         const qtyCell = buildNumberCell('qty', '1', 0);
         const activeCell = document.createElement('td');
         const activeInput = document.createElement('input');
@@ -566,9 +686,14 @@
 
         tr.appendChild(strikeCell);
         tr.appendChild(premiumCell);
+        tr.appendChild(dateCell);
         tr.appendChild(qtyCell);
         tr.appendChild(activeCell);
         tr.appendChild(actionCell);
+
+        if (!matchesFilter(row)) tr.style.display = 'none';
+        else tr.style.display = '';
+
         body.appendChild(tr);
       });
     }
@@ -624,6 +749,34 @@
       return longPremiums + shortPremiums;
     }
 
+    function computeFilterTotals() {
+      let paid = 0;
+      state.longRows.forEach(row => {
+        if (matchesFilter(row) && row.premium != null && row.qty != null) {
+          paid += row.premium * row.qty;
+        }
+      });
+      let received = 0;
+      state.shortRows.forEach(row => {
+        if (matchesFilter(row) && row.premium != null && row.qty != null) {
+          received += row.premium * row.qty;
+        }
+      });
+      return {
+        paid,
+        received,
+        net: received - paid
+      };
+    }
+
+    function updateFilterSummary() {
+      if (!summaryFilterPaid || !summaryFilterReceived || !summaryFilterNet) return;
+      const totals = computeFilterTotals();
+      setSummaryValue(summaryFilterPaid, -totals.paid);
+      setSummaryValue(summaryFilterReceived, totals.received);
+      setSummaryValue(summaryFilterNet, totals.net);
+    }
+
     function updateSummary() {
       const longActive = sumActiveLong();
       const shortActive = sumActiveShort();
@@ -637,6 +790,7 @@
       setSummaryValue(summaryPlateau, plateau);
       setSummaryValue(summaryPlateauBullish, plateauBullish);
       redrawChart();
+      updateFilterSummary();
     }
 
     document.getElementById('addLongRow').addEventListener('click', () => {
@@ -665,12 +819,34 @@
       setStatus('Ripristinato esempio short.');
     });
 
+    function applyFilter(value) {
+      const parsed = parseMonthInput(value);
+      state.filter.year = parsed.year;
+      state.filter.month = parsed.month;
+      renderTables();
+      updateSummary();
+    }
+
+    if (filterMonthInput) {
+      filterMonthInput.addEventListener('input', () => {
+        applyFilter(filterMonthInput.value);
+      });
+    }
+
+    if (filterClearBtn) {
+      filterClearBtn.addEventListener('click', () => {
+        if (filterMonthInput) filterMonthInput.value = '';
+        applyFilter('');
+      });
+    }
+
     function cleanRows(rows) {
       return rows
         .filter(row => row.strike != null || row.premium != null)
         .map(row => ({
           strike: row.strike ?? 0,
           premium: row.premium ?? 0,
+          tradeDate: row.date ? normalizeDateValue(row.date) : null,
           contracts: row.qty ?? 0,
           active: ensureActive(row.active) === 1
         }));
@@ -775,6 +951,7 @@
           state.longRows = data.longPositions.map(item => ({
             strike: parseNumber(item.strike),
             premium: parseNumber(item.premium),
+            date: normalizeDateValue(item.tradeDate || item.date),
             qty: parseNumber(item.contracts) ?? 1,
             active: item.active ? 1 : 0
           }));
@@ -784,6 +961,7 @@
           state.shortRows = data.shortPositions.map(item => ({
             strike: parseNumber(item.strike),
             premium: parseNumber(item.premium),
+            date: normalizeDateValue(item.tradeDate || item.date),
             qty: parseNumber(item.contracts) ?? 1,
             active: item.active ? 1 : 0
           }));
@@ -1077,6 +1255,7 @@
     const airtablePremiumFieldInput = document.getElementById('airtablePremiumField');
     const airtableContractsFieldInput = document.getElementById('airtableContractsField');
     const airtableActiveFieldInput = document.getElementById('airtableActiveField');
+    const airtableTradeDateFieldInput = document.getElementById('airtableTradeDateField');
 
     function loadAirtableConfig() {
       try {
@@ -1092,11 +1271,11 @@
         }
         return { token: DEFAULT_AIRTABLE_TOKEN, base: DEFAULT_AIRTABLE_BASE, table: DEFAULT_SNAPSHOT_TABLE, view: '', payloadField: 'payload', dateField: '', plateauField: '',
                  longTable: DEFAULT_LONG_TABLE, shortTable: DEFAULT_SHORT_TABLE, longView: '', shortView: '',
-                 fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active' };
+                 fStrike: 'strike', fPremium: 'premium', fTradeDate: 'tradeDate', fContracts: 'contracts', fActive: 'active' };
       } catch {
         return { token: DEFAULT_AIRTABLE_TOKEN, base: DEFAULT_AIRTABLE_BASE, table: DEFAULT_SNAPSHOT_TABLE, view: '', payloadField: 'payload', dateField: '', plateauField: '',
                  longTable: DEFAULT_LONG_TABLE, shortTable: DEFAULT_SHORT_TABLE, longView: '', shortView: '',
-                 fStrike: 'strike', fPremium: 'premium', fContracts: 'contracts', fActive: 'active' };
+                 fStrike: 'strike', fPremium: 'premium', fTradeDate: 'tradeDate', fContracts: 'contracts', fActive: 'active' };
       }
     }
 
@@ -1128,6 +1307,7 @@
       if (airtableShortViewInput) airtableShortViewInput.value = cfg.shortView || '';
       if (airtableStrikeFieldInput) airtableStrikeFieldInput.value = cfg.fStrike || 'strike';
       if (airtablePremiumFieldInput) airtablePremiumFieldInput.value = cfg.fPremium || 'premium';
+      if (airtableTradeDateFieldInput) airtableTradeDateFieldInput.value = cfg.fTradeDate || 'tradeDate';
       if (airtableContractsFieldInput) airtableContractsFieldInput.value = cfg.fContracts || 'contracts';
       if (airtableActiveFieldInput) airtableActiveFieldInput.value = cfg.fActive || 'active';
     }
@@ -1174,6 +1354,7 @@
       if (airtableShortViewInput) cfg.shortView = airtableShortViewInput.value.trim();
       if (airtableStrikeFieldInput) cfg.fStrike = airtableStrikeFieldInput.value.trim() || 'strike';
       if (airtablePremiumFieldInput) cfg.fPremium = airtablePremiumFieldInput.value.trim() || 'premium';
+      if (airtableTradeDateFieldInput) cfg.fTradeDate = airtableTradeDateFieldInput.value.trim() || 'tradeDate';
       if (airtableContractsFieldInput) cfg.fContracts = airtableContractsFieldInput.value.trim() || 'contracts';
       if (airtableActiveFieldInput) cfg.fActive = airtableActiveFieldInput.value.trim() || 'active';
       if (airtableUrlInput) {
@@ -1317,6 +1498,7 @@
       return {
         strike: cfg.fStrike || 'strike',
         premium: cfg.fPremium || 'premium',
+        tradeDate: cfg.fTradeDate || 'tradeDate',
         contracts: cfg.fContracts || 'contracts',
         active: cfg.fActive || 'active'
       };
@@ -1327,6 +1509,7 @@
       const fields = {};
       if (row.strike != null) fields[f.strike] = row.strike;
       if (row.premium != null) fields[f.premium] = row.premium;
+      fields[f.tradeDate] = row.date ? normalizeDateValue(row.date) : null;
       if (row.qty != null) fields[f.contracts] = row.qty;
       fields[f.active] = ensureActive(row.active) === 1;
       return fields;
@@ -1339,6 +1522,7 @@
         _airtableId: rec.id,
         strike: parseNumber(fld[f.strike]),
         premium: parseNumber(fld[f.premium]),
+        date: normalizeDateValue(fld[f.tradeDate]),
         qty: parseNumber(fld[f.contracts]) ?? 1,
         active: fld[f.active] ? 1 : 0
       };
